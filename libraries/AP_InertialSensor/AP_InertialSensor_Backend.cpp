@@ -414,7 +414,13 @@ void AP_InertialSensor_Backend::_notify_new_accel_raw_sample(uint8_t instance,
         _imu._delta_velocity_acc[instance] += accel * dt;
         _imu._delta_velocity_acc_dt[instance] += dt;
 
-        _imu._accel_filtered[instance] = _imu._accel_filter[instance].apply(accel);
+        _imu._last_raw_accel[instance] = accel;
+
+        Vector3f accel_filtered = accel;
+
+        // apply the low pass filter
+        accel_filtered = _imu._accel_filter[instance].apply(accel_filtered);
+        _imu._accel_filtered[instance] = accel_filtered;
         if (_imu._accel_filtered[instance].is_nan() || _imu._accel_filtered[instance].is_inf()) {
             _imu._accel_filter[instance].reset();
         }

@@ -96,6 +96,10 @@ void ModeCustom::run()
     //ahrs_.get_gyro_latest     (Seemingly: gyro filtered + drift correction)
 
 
+    // --- READ ACCEL --- //
+    Vector3f accel_Kb_raw = AP::ins().get_last_raw_accel();     // raw measurement, Kb, danger of aliasing (400 Hz access)!
+    Vector3f accel_Kb_f = AP::ins().get_accel();                // filtered (Lowpass (INS_ACCEL_FILTER)), Kb
+
     // accel_ef_blended is acceleration at IMU position
     // https://ardupilot.org/copter/docs/common-sensor-offset-compensation.html
     Vector3f accel_ef_at_imu = ahrs_.get_accel_ef_blended();
@@ -216,6 +220,12 @@ void ModeCustom::run()
     rtU_.measure.a_Kg[0] = accel_ef_at_cog.x;
     rtU_.measure.a_Kg[1] = accel_ef_at_cog.y;
     rtU_.measure.a_Kg[2] = accel_ef_at_cog.z;
+    rtU_.measure.a_Kb_raw[0] = accel_Kb_raw.x;
+    rtU_.measure.a_Kb_raw[1] = accel_Kb_raw.y;
+    rtU_.measure.a_Kb_raw[2] = accel_Kb_raw.z;
+    rtU_.measure.a_Kb_f[0] = accel_Kb_f.x;
+    rtU_.measure.a_Kb_f[1] = accel_Kb_f.y;
+    rtU_.measure.a_Kb_f[2] = accel_Kb_f.z;
     rtU_.measure.V_Kg[0] = velocity_NED[0];
     rtU_.measure.V_Kg[1] = velocity_NED[1];
     rtU_.measure.V_Kg[2] = velocity_NED[2];
