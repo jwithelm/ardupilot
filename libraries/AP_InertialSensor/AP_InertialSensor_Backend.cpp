@@ -291,6 +291,9 @@ void AP_InertialSensor_Backend::_notify_new_gyro_raw_sample(uint8_t instance,
             _imu._gyro_notch_filter[instance].reset();
             _imu._gyro_harmonic_notch_filter[instance].reset();
         } else {
+            // calculate derivative of filtered gyro
+            _imu._gyro_f_dt[instance] = (gyro_filtered - _imu._gyro_filtered[instance]) / dt;
+
             _imu._gyro_filtered[instance] = gyro_filtered;
         }
 

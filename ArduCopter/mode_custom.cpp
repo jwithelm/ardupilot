@@ -80,12 +80,21 @@ void ModeCustom::run()
         velocity_NED[2] = 0;
     }
 
+
+    // --- READ GYRO --- //
     /* Info: gyro scaling is hard coded based on AP_InertialSensor::register_gyro in AP_InertialSensor.cpp.
     The scaling is applied in AP_InertialSensor_Backend::_notify_new_gyro_raw_sample in
     AP_InertialSensor_Backend.cpp. However, the variable gyro_filtered is overwritten during filtering.
     It seems that there is no non-filtered scaled angular velocity available as member variable.
     That is why the scaling is applied here.) */
     Vector3f Omega_Kb_raw = AP::ins().get_raw_gyro() / (INT16_MAX/radians(2000));
+    Vector3f Omega_Kb_f = AP::ins().get_gyro();                 // filtered (Static Notches -> Dynamic Notches -> Lowpass (INS_GYRO_FILTER)), Kb
+    Vector3f Omega_Kb_f_dt = AP::ins().get_gyro_f_dt();         // derivative of filtered (Static Notches -> Dynamic Notches -> Lowpass (INS_GYRO_FILTER)), Kb
+
+    // Further options:
+    //ahrs_.get_gyro            (Seemingly: gyro filtered + drift correction)
+    //ahrs_.get_gyro_latest     (Seemingly: gyro filtered + drift correction)
+
 
     // accel_ef_blended is acceleration at IMU position
     // https://ardupilot.org/copter/docs/common-sensor-offset-compensation.html
@@ -188,9 +197,15 @@ void ModeCustom::run()
 
 
     // assign measured controller inputs to measure struct
-    rtU_.measure.omega_Kb[0] = Omega_Kb_raw[0];
-    rtU_.measure.omega_Kb[1] = Omega_Kb_raw[1];
-    rtU_.measure.omega_Kb[2] = Omega_Kb_raw[2];
+    rtU_.measure.omega_Kb_raw[0] = Omega_Kb_raw[0];
+    rtU_.measure.omega_Kb_raw[1] = Omega_Kb_raw[1];
+    rtU_.measure.omega_Kb_raw[2] = Omega_Kb_raw[2];
+    rtU_.measure.omega_Kb_f[0] = Omega_Kb_f[0];
+    rtU_.measure.omega_Kb_f[1] = Omega_Kb_f[1];
+    rtU_.measure.omega_Kb_f[2] = Omega_Kb_f[2];
+    rtU_.measure.omega_Kb_f_dt[0] = Omega_Kb_f_dt[0];
+    rtU_.measure.omega_Kb_f_dt[1] = Omega_Kb_f_dt[1];
+    rtU_.measure.omega_Kb_f_dt[2] = Omega_Kb_f_dt[2];
     rtU_.measure.q_bg[0] = attitude_vehicle_quat.q1;
     rtU_.measure.q_bg[1] = attitude_vehicle_quat.q2;
     rtU_.measure.q_bg[2] = attitude_vehicle_quat.q3;
