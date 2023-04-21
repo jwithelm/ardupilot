@@ -82,12 +82,7 @@ void ModeCustom::run()
 
 
     // --- READ GYRO --- //
-    /* Info: gyro scaling is hard coded based on AP_InertialSensor::register_gyro in AP_InertialSensor.cpp.
-    The scaling is applied in AP_InertialSensor_Backend::_notify_new_gyro_raw_sample in
-    AP_InertialSensor_Backend.cpp. However, the variable gyro_filtered is overwritten during filtering.
-    It seems that there is no non-filtered scaled angular velocity available as member variable.
-    That is why the scaling is applied here.) */
-    Vector3f Omega_Kb_raw = AP::ins().get_raw_gyro() / (INT16_MAX/radians(2000));
+    Vector3f Omega_Kb_raw = AP::ins().get_last_raw_gyro();      // raw measurement, Kb, danger of aliasing (400 Hz access)!
     Vector3f Omega_Kb_f = AP::ins().get_gyro();                 // filtered (Static Notches -> Dynamic Notches -> Lowpass (INS_GYRO_FILTER)), Kb
     Vector3f Omega_Kb_f_dt = AP::ins().get_gyro_f_dt();         // derivative of filtered (Static Notches -> Dynamic Notches -> Lowpass (INS_GYRO_FILTER)), Kb
 

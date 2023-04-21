@@ -126,6 +126,8 @@ public:
     ///
     const Vector3f     &get_gyro(uint8_t i) const { return _gyro[i]; }
     const Vector3f     &get_gyro(void) const { return get_gyro(_primary_gyro); }
+    const Vector3f     &get_last_raw_gyro(uint8_t i) const { return _last_raw_gyro[i]; }
+    const Vector3f     &get_last_raw_gyro(void) const { return get_last_raw_gyro(_primary_gyro); }
 
     const Vector3f     &get_gyro_f_dt(uint8_t i) const { return _gyro_f_dt[i]; }
     const Vector3f     &get_gyro_f_dt(void) const { return get_gyro_f_dt(_primary_gyro); }
