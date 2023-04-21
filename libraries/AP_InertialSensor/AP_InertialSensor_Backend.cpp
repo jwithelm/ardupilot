@@ -420,9 +420,13 @@ void AP_InertialSensor_Backend::_notify_new_accel_raw_sample(uint8_t instance,
 
         // apply the low pass filter
         accel_filtered = _imu._accel_filter[instance].apply(accel_filtered);
-        _imu._accel_filtered[instance] = accel_filtered;
-        if (_imu._accel_filtered[instance].is_nan() || _imu._accel_filtered[instance].is_inf()) {
+
+        // if the filtering failed in any way then reset the filters and keep the old value
+        if (accel_filtered.is_nan() || accel_filtered.is_inf()) {
             _imu._accel_filter[instance].reset();
+        }
+        else {
+            _imu._accel_filtered[instance] = accel_filtered;
         }
 
         _imu.set_accel_peak_hold(instance, _imu._accel_filtered[instance]);
