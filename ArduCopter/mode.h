@@ -1419,6 +1419,8 @@ public:
 
     MatlabControllerClass custom_controller;
 
+    static const struct AP_Param::GroupInfo var_info[];
+
 protected:
 
     const char *name() const override { return "CUSTOM"; }
