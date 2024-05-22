@@ -177,7 +177,7 @@ void AP_InertialSensor_Backend::_publish_gyro(uint8_t instance, const Vector3f &
 /*
   apply harmonic notch and low pass gyro filters
  */
-void AP_InertialSensor_Backend::apply_gyro_filters(const uint8_t instance, const Vector3f &gyro)
+void AP_InertialSensor_Backend::apply_gyro_filters(const uint8_t instance, const Vector3f &gyro, const float dt)
 {
     Vector3f gyro_filtered = gyro;
 
@@ -215,6 +215,11 @@ void AP_InertialSensor_Backend::apply_gyro_filters(const uint8_t instance, const
             notch.filter[instance].reset();
         }
     } else {
+        // calculate derivative of filtered gyro
+        if (dt > 0.0F) {
+            _imu._gyro_f_dt[instance] = (gyro_filtered - _imu._gyro_filtered[instance]) / dt;
+        }
+        
         _imu._gyro_filtered[instance] = gyro_filtered;
     }
 }
@@ -311,7 +316,7 @@ void AP_InertialSensor_Backend::_notify_new_gyro_raw_sample(uint8_t instance,
 #endif
 
         // apply gyro filters
-        apply_gyro_filters(instance, gyro);
+        apply_gyro_filters(instance, gyro, dt);
 
         _imu._new_gyro_data[instance] = true;
     }
@@ -412,7 +417,7 @@ void AP_InertialSensor_Backend::_notify_new_delta_angle(uint8_t instance, const 
 #endif
 
         // apply gyro filters
-        apply_gyro_filters(instance, gyro);
+        apply_gyro_filters(instance, gyro, dt);
 
         _imu._new_gyro_data[instance] = true;
     }

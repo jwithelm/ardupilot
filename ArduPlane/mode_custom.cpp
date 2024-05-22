@@ -82,6 +82,8 @@ void ModeCustom::update()
     It seems that there is no non-filtered scaled angular velocity available as member variable.
     That is why the scaling is applied here.) */
     Vector3f Omega_Kb_raw = AP::ins().get_raw_gyro() / (INT16_MAX/radians(2000));
+    Vector3f Omega_Kb_f = AP::ins().get_gyro();                 // filtered gyro (Static Notches -> Dynamic Notches -> Lowpass (INS_GYRO_FILTER)), Kb
+    Vector3f Omega_Kb_f_dt = AP::ins().get_gyro_f_dt();         // derivative (two-point backward finite difference) of filtered gyro, Kb
 
     Quaternion attitude_vehicle_quat;
     if(!plane.ahrs.get_quaternion(attitude_vehicle_quat))
@@ -133,9 +135,15 @@ void ModeCustom::update()
         rtU_->cmd.RC_pwm[i] = plane.g2.rc_channels.channel(i)->get_radio_in();
     }
 
-    rtU_->measure.omega_Kb[0] = Omega_Kb_raw[0];
-    rtU_->measure.omega_Kb[1] = Omega_Kb_raw[1];
-    rtU_->measure.omega_Kb[2] = Omega_Kb_raw[2];
+    rtU_->measure.omega_Kb_raw[0] = Omega_Kb_raw[0];
+    rtU_->measure.omega_Kb_raw[1] = Omega_Kb_raw[1];
+    rtU_->measure.omega_Kb_raw[2] = Omega_Kb_raw[2];
+    rtU_->measure.omega_Kb_f[0] = Omega_Kb_f[0];
+    rtU_->measure.omega_Kb_f[1] = Omega_Kb_f[1];
+    rtU_->measure.omega_Kb_f[2] = Omega_Kb_f[2];
+    rtU_->measure.omega_Kb_f_dt[0] = Omega_Kb_f_dt[0];
+    rtU_->measure.omega_Kb_f_dt[1] = Omega_Kb_f_dt[1];
+    rtU_->measure.omega_Kb_f_dt[2] = Omega_Kb_f_dt[2];
     rtU_->measure.q_bg[0] = attitude_vehicle_quat[0];
     rtU_->measure.q_bg[1] = attitude_vehicle_quat[1];
     rtU_->measure.q_bg[2] = attitude_vehicle_quat[2];
