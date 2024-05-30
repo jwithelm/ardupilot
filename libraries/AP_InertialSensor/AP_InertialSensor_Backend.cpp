@@ -157,12 +157,13 @@ void AP_InertialSensor_Backend::_rotate_and_correct_gyro(uint8_t instance, Vecto
 /*
   rotate gyro vector and add the gyro offset
  */
-void AP_InertialSensor_Backend::_publish_gyro(uint8_t instance, const Vector3f &gyro) /* front end */
+void AP_InertialSensor_Backend::_publish_gyro(uint8_t instance, const Vector3f &gyro, const Vector3f &ml_gyro) /* front end */
 {
     if ((1U<<instance) & _imu.imu_kill_mask) {
         return;
     }
     _imu._gyro[instance] = gyro;
+    _imu._ml_gyro[instance] = ml_gyro;
     _imu._gyro_healthy[instance] = true;
 
     // publish delta angle
@@ -180,6 +181,7 @@ void AP_InertialSensor_Backend::_publish_gyro(uint8_t instance, const Vector3f &
 void AP_InertialSensor_Backend::apply_gyro_filters(const uint8_t instance, const Vector3f &gyro, const float dt)
 {
     Vector3f gyro_filtered = gyro;
+    Vector3f ml_gyro_filtered = gyro;
 
     // apply the harmonic notch filters
     for (auto &notch : _imu.harmonic_notches) {
@@ -207,6 +209,7 @@ void AP_InertialSensor_Backend::apply_gyro_filters(const uint8_t instance, const
 
     // apply the low pass filter last to attentuate any notch induced noise
     gyro_filtered = _imu._gyro_filter[instance].apply(gyro_filtered);
+    ml_gyro_filtered = _imu._ml_gyro_filter[instance].apply(ml_gyro_filtered);
 
     // if the filtering failed in any way then reset the filters and keep the old value
     if (gyro_filtered.is_nan() || gyro_filtered.is_inf()) {
@@ -215,13 +218,21 @@ void AP_InertialSensor_Backend::apply_gyro_filters(const uint8_t instance, const
             notch.filter[instance].reset();
         }
     } else {
-        // calculate derivative of filtered gyro
-        if (dt > 0.0F) {
-            _imu._gyro_f_dt[instance] = (gyro_filtered - _imu._gyro_filtered[instance]) / dt;
-        }
-        
         _imu._gyro_filtered[instance] = gyro_filtered;
     }
+
+    // if the filtering failed in any way then reset the filters and keep the old value
+    if (ml_gyro_filtered.is_nan() || ml_gyro_filtered.is_inf()) {
+        _imu._ml_gyro_filter[instance].reset();
+    } else {
+        // calculate derivative of filtered gyro
+        if (dt > 0.0F) {
+            _imu._ml_gyro_dt[instance] = (ml_gyro_filtered - _imu._ml_gyro_filtered[instance]) / dt;
+        }
+        
+        _imu._ml_gyro_filtered[instance] = ml_gyro_filtered;
+    }
+
 }
 
 void AP_InertialSensor_Backend::_notify_new_gyro_raw_sample(uint8_t instance,
@@ -716,7 +727,7 @@ void AP_InertialSensor_Backend::update_gyro(uint8_t instance) /* front end */
         return;
     }
     if (_imu._new_gyro_data[instance]) {
-        _publish_gyro(instance, _imu._gyro_filtered[instance]);
+        _publish_gyro(instance, _imu._gyro_filtered[instance], _imu._ml_gyro_filtered[instance]);
         // copy the gyro samples from the backend to the frontend window
 #if HAL_WITH_DSP
         _imu._gyro_raw[instance] = _imu._last_raw_gyro[instance] * _imu._gyro_raw_sampling_multiplier[instance];
@@ -730,6 +741,10 @@ void AP_InertialSensor_Backend::update_gyro(uint8_t instance) /* front end */
     if (_last_gyro_filter_hz != _gyro_filter_cutoff() || sensors_converging()) {
         _imu._gyro_filter[instance].set_cutoff_frequency(gyro_rate, _gyro_filter_cutoff());
         _last_gyro_filter_hz = _gyro_filter_cutoff();
+    }
+    if (_ml_last_gyro_filter_hz != _ml_gyro_filter_cutoff() || sensors_converging()) {
+        _imu._ml_gyro_filter[instance].set_cutoff_frequency(gyro_rate, _ml_gyro_filter_cutoff());
+        _ml_last_gyro_filter_hz = _ml_gyro_filter_cutoff();
     }
 
     for (auto &notch : _imu.harmonic_notches) {

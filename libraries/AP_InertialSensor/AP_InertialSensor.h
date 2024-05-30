@@ -137,8 +137,11 @@ public:
     const Vector3f     &get_gyro(uint8_t i) const { return _gyro[i]; }
     const Vector3f     &get_gyro(void) const { return get_gyro(_primary_gyro); }
 
-    const Vector3f     &get_gyro_f_dt(uint8_t i) const { return _gyro_f_dt[i]; }
-    const Vector3f     &get_gyro_f_dt(void) const { return get_gyro_f_dt(_primary_gyro); }
+    const Vector3f     &get_ml_gyro(uint8_t i) const { return _ml_gyro[i]; }
+    const Vector3f     &get_ml_gyro(void) const { return get_ml_gyro(_primary_gyro); }
+
+    const Vector3f     &get_ml_gyro_dt(uint8_t i) const { return _ml_gyro_dt[i]; }
+    const Vector3f     &get_ml_gyro_dt(void) const { return get_ml_gyro_dt(_primary_gyro); }
 
     // set gyro offsets in radians/sec
     const Vector3f &get_gyro_offsets(uint8_t i) const { return _gyro_offset[i]; }
@@ -250,6 +253,7 @@ public:
 
     // get the gyro filter rate in Hz
     uint16_t get_gyro_filter_hz(void) const { return _gyro_filter_cutoff; }
+    // ToDo: ML GYRO FILTER -> Duplicate not needed here, this function only gets called in AutoTune
 
     // get the accel filter rate in Hz
     uint16_t get_accel_filter_hz(void) const { return _accel_filter_cutoff; }
@@ -523,8 +527,10 @@ private:
     // Low Pass filters for gyro and accel
     LowPassFilter2pVector3f _accel_filter[INS_MAX_INSTANCES];
     LowPassFilter2pVector3f _gyro_filter[INS_MAX_INSTANCES];
+    LowPassFilter2pVector3f _ml_gyro_filter[INS_MAX_INSTANCES];
     Vector3f _accel_filtered[INS_MAX_INSTANCES];
     Vector3f _gyro_filtered[INS_MAX_INSTANCES];
+    Vector3f _ml_gyro_filtered[INS_MAX_INSTANCES];
 #if HAL_WITH_DSP
     // Thread-safe public version of _last_raw_gyro
     Vector3f _gyro_raw[INS_MAX_INSTANCES];
@@ -536,6 +542,8 @@ private:
 
     // Most recent gyro reading
     Vector3f _gyro[INS_MAX_INSTANCES];
+    Vector3f _ml_gyro[INS_MAX_INSTANCES];
+    Vector3f _ml_gyro_dt[INS_MAX_INSTANCES];
     Vector3f _delta_angle[INS_MAX_INSTANCES];
     float _delta_angle_dt[INS_MAX_INSTANCES];
     bool _delta_angle_valid[INS_MAX_INSTANCES];
@@ -544,7 +552,6 @@ private:
     Vector3f _delta_angle_acc[INS_MAX_INSTANCES];
     Vector3f _last_delta_angle[INS_MAX_INSTANCES];
     Vector3f _last_raw_gyro[INS_MAX_INSTANCES];
-    Vector3f _gyro_f_dt[INS_MAX_INSTANCES];
 
     // bitmask indicating if a sensor is doing sensor-rate sampling:
     uint8_t _accel_sensor_rate_sampling_enabled;
@@ -595,6 +602,7 @@ private:
     // filtering frequency (0 means default)
     AP_Int16    _accel_filter_cutoff;
     AP_Int16    _gyro_filter_cutoff;
+    AP_Int16    _ml_gyro_filter_cutoff;
     AP_Int8     _gyro_cal_timing;
 
     // use for attitude, velocity, position estimates

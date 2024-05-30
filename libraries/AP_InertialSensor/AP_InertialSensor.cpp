@@ -341,6 +341,14 @@ const AP_Param::GroupInfo AP_InertialSensor::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("GYRO_FILTER", 18, AP_InertialSensor, _gyro_filter_cutoff,  DEFAULT_GYRO_FILTER),
 
+    // @Param: ML_GYR_FLTER
+    // @DisplayName: Gyro filter cutoff frequency for the MATLAB mode
+    // @Description: Filter cutoff frequency for gyroscopes. This can be set to a lower value to try to cope with very high vibration levels in aircraft. A value of zero means no filtering (not recommended!)
+    // @Units: Hz
+    // @Range: 0 256
+    // @User: Advanced
+    AP_GROUPINFO("ML_GYR_FLTER", 54, AP_InertialSensor, _ml_gyro_filter_cutoff,  DEFAULT_GYRO_FILTER),
+
     // @Param: ACCEL_FILTER
     // @DisplayName: Accel filter cutoff frequency
     // @Description: Filter cutoff frequency for accelerometers. This can be set to a lower value to try to cope with very high vibration levels in aircraft. A value of zero means no filtering (not recommended!)
