@@ -208,8 +208,13 @@ void AP_InertialSensor_Backend::apply_gyro_filters(const uint8_t instance, const
     }
 
     // apply the low pass filter last to attentuate any notch induced noise
+    if (_imu._ml_gyro_notch_filter_enabled) {
+        ml_gyro_filtered = _imu._ml_gyro_filter[instance].apply(gyro_filtered);
+    }
+    else {
+        ml_gyro_filtered = _imu._ml_gyro_filter[instance].apply(ml_gyro_filtered);
+    }
     gyro_filtered = _imu._gyro_filter[instance].apply(gyro_filtered);
-    ml_gyro_filtered = _imu._ml_gyro_filter[instance].apply(ml_gyro_filtered);
 
     // if the filtering failed in any way then reset the filters and keep the old value
     if (gyro_filtered.is_nan() || gyro_filtered.is_inf()) {
@@ -745,6 +750,10 @@ void AP_InertialSensor_Backend::update_gyro(uint8_t instance) /* front end */
     if (_ml_last_gyro_filter_hz != _ml_gyro_filter_cutoff() || sensors_converging()) {
         _imu._ml_gyro_filter[instance].set_cutoff_frequency(gyro_rate, _ml_gyro_filter_cutoff());
         _ml_last_gyro_filter_hz = _ml_gyro_filter_cutoff();
+    }
+    if (_last_ml_gyro_notch_filter_enabled != (_imu._ml_gyro_notch_filter_conf == 1)) {
+        _imu._ml_gyro_notch_filter_enabled = (_imu._ml_gyro_notch_filter_conf == 1);
+        _last_ml_gyro_notch_filter_enabled = _imu._ml_gyro_notch_filter_enabled;
     }
 
     for (auto &notch : _imu.harmonic_notches) {

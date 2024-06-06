@@ -266,6 +266,7 @@ protected:
     uint16_t _last_accel_filter_hz;
     uint16_t _last_gyro_filter_hz;
     uint16_t _ml_last_gyro_filter_hz;
+    bool _last_ml_gyro_notch_filter_enabled;
 
     void set_gyro_orientation(uint8_t instance, enum Rotation rotation) {
         _imu._gyro_orientation[instance] = rotation;
