@@ -94,3 +94,70 @@ typedef LowPassFilter2p<long>     LowPassFilter2pLong;
 typedef LowPassFilter2p<float>    LowPassFilter2pFloat;
 typedef LowPassFilter2p<Vector2f> LowPassFilter2pVector2f;
 typedef LowPassFilter2p<Vector3f> LowPassFilter2pVector3f;
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// LowPassFilterMp
+////////////////////////////////////////////////////////////////////////////////////////////
+// ToDo:
+// - Check if GCS_SEND_TEXT has an text length limit!
+
+#include <complex>
+//#include <AP_Math/AP_Math.h> -> for M_PI (already included)
+//#include <cmath> -> for trigonometric functions (already)
+
+#define LPF_MP_MAX_FILTERS 3 // The cascade consists of biquads, so the maximum filter order will be 2*LPF_MP_MAX_FILTERS.
+
+template <class T>
+class LowPassFilterMp {
+public:
+    // constructor
+    LowPassFilterMp();
+    //LowPassFilterMp(float sample_freq, float cutoff_freq);
+    // destructor
+    ~LowPassFilterMp();
+
+    // initialize filters
+    void allocate_filters(uint8_t num_filters);
+    
+    // change parameters
+    void set_cutoff_frequency(float sample_freq, float cutoff_freq);
+    
+    // return the cutoff frequency and sample frequency
+    float get_cutoff_freq(void) const;
+    float get_sample_freq(void) const;
+    
+    T apply(const T &sample);
+    
+    void reset(void);
+    //void reset(const T &value);
+
+    CLASS_NO_COPY(LowPassFilterMp);
+
+protected:
+    // biquad params
+    typename DigitalBiquadFilter<T>::biquad_params* _params;
+    
+private:
+    // biquad filters
+    DigitalBiquadFilter<T>* _filters;
+
+    // number of allocated filters
+    uint8_t _num_filters {};
+
+    // filter settings
+    float _sample_freq {};
+    float _cutoff_freq {};
+
+    // PT2 params
+    float _pt2_freq_scale {};
+
+    // calculates the biquad coefficients
+    void compute_params(void);
+
+    void compute_butterworth_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]);
+    void compute_pt2_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]);
+};
+
+typedef LowPassFilterMp<Vector3f> LowPassFilterMpVector3f;

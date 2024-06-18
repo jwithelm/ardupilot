@@ -2,7 +2,9 @@
 #define AP_INLINE_VECTOR_OPS
 #pragma GCC optimize("O2")
 #endif
+
 #include "LowPassFilter2p.h"
+#include <GCS_MAVLink/GCS.h>
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -129,3 +131,194 @@ template class LowPassFilter2p<long>;
 template class LowPassFilter2p<float>;
 template class LowPassFilter2p<Vector2f>;
 template class LowPassFilter2p<Vector3f>;
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// LowPassFilterMp
+////////////////////////////////////////////////////////////////////////////////////////////
+
+// ToDo:
+// - Do we need an external num_filters argument? This is probably more an internal argument. We need to check, how parameters behave if arrays of a class are instantiated?
+//   - We could include num_filters as internal AP_Param variable, but then this class would depend on AP_Param, and if we have an array of filters, each filter instance would have its own parameter, and this isn't usefull, because often an array of filters has the same parametrization!
+
+
+template <class T>
+LowPassFilterMp<T>::LowPassFilterMp()
+    : _filters {nullptr}
+    , _params {nullptr}
+{}
+
+
+/*
+template <class T>
+LowPassFilterMp<T>::LowPassFilterMp(float sample_freq, float cutoff_freq, uint8_t num_filters) {
+    allocate_filters(num_filters);
+    set_cutoff_frequency(sample_freq, cutoff_freq);
+}
+*/
+
+
+// allocate a collection of biquad filters
+// ToDo: This function does now more than that, it also calculates some initial parameters! -> Rename or split?
+template <class T>
+void LowPassFilterMp<T>::allocate_filters(uint8_t num_filters)
+{
+    if (num_filters > LPF_MP_MAX_FILTERS) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "LowPassFilterMp: Too many cascaded filters requested (%u), using the maximum of %u instead", num_filters, static_cast<u_int>(LPF_MP_MAX_FILTERS));
+        _num_filters = LPF_MP_MAX_FILTERS;
+    }
+    else {
+        _num_filters = num_filters;
+    }
+
+    if (_num_filters > 0) {
+        _filters = new DigitalBiquadFilter<T>[_num_filters];
+        _params = new typename DigitalBiquadFilter<T>::biquad_params[_num_filters];
+        if (_filters == nullptr || _params == nullptr) {
+            GCS_SEND_TEXT(MAV_SEVERITY_ERROR, "LowPassFilterMp: Failed to allocate %u bytes for the filter cascade", (unsigned int)(_num_filters * (sizeof(DigitalBiquadFilter<T>) + sizeof(typename DigitalBiquadFilter<T>::biquad_params)))); // ToDo: Check, that this line is correct (usage of typename)
+            _num_filters = 0;
+        }
+    }
+
+    // calculate the frequency scaling factor for the PT2
+    float gain = std::pow(0.5F, 1.0F/_num_filters);
+    _pt2_freq_scale = std::sqrt(gain/(1-gain));
+}
+
+
+// destroy all of the associated biquad filters
+template <class T>
+LowPassFilterMp<T>::~LowPassFilterMp() {
+    delete[] _filters;
+    delete[] _params;
+    _num_filters = 0;
+}
+
+
+// apply a sample to each of the underlying filters in turn and return the output
+template <class T>
+T LowPassFilterMp<T>::apply(const T &sample) {
+    T output = sample;
+    for (uint8_t i = 0; i < _num_filters; ++i) {
+        // ToDo: Do we really need this check? The biquad also applies checks...
+        if (!is_positive(_params[i].cutoff_freq)) {
+            // zero cutoff means pass-thru
+            continue;
+        }
+        output = _filters[i].apply(output, _params[i]);
+    }
+    return output;
+}
+
+
+// change parameters
+template <class T>
+void LowPassFilterMp<T>::set_cutoff_frequency(float sample_freq, float cutoff_freq) {
+    _sample_freq = sample_freq;
+    _cutoff_freq = cutoff_freq;
+
+    compute_params();
+}
+
+
+// return the cutoff frequency
+template <class T>
+float LowPassFilterMp<T>::get_cutoff_freq(void) const {
+    return _cutoff_freq;
+}
+
+
+// return the sample frequency
+template <class T>
+float LowPassFilterMp<T>::get_sample_freq(void) const {
+    return _sample_freq;
+}
+
+
+template <class T>
+void LowPassFilterMp<T>::reset(void) {
+    for (uint8_t i = 0; i < _num_filters; ++i) {
+        _filters[i].reset();
+    }
+}
+
+/*
+template <class T>
+void LowPassFilter2p<T>::reset(const T &value) {
+    return _filter.reset(value, _params);
+}
+*/
+
+
+// This function calculates the poles for a butterworth filter of 2*_num_filters order.
+// The poles then get splitted into _num_filters biquad filters and the coefficients for the biquad filters are calculated.
+template <class T>
+void LowPassFilterMp<T>::compute_params(void) {
+    
+    std::complex<float> poles[LPF_MP_MAX_FILTERS] {};
+    
+    // ToDo: Switch / Case for filter type OR function pointer. One could be changed during runtime and the other would require an reboot.
+    //compute_pt2_analog(poles);
+    compute_butterworth_analog(poles);
+
+    // scale poles (continuous frequency pre-warp)
+    float scale = (_sample_freq/M_PI * std::tan(M_PI*_cutoff_freq/_sample_freq))/_cutoff_freq;  // ToDo: This is not good, because _cutoff_freq can be zero!
+    //float scale = 2 * _sample_freq * std::tan(M_PI*_cutoff_freq/_sample_freq);
+    for (uint8_t idx = 0; idx < _num_filters; ++idx) {
+        poles[idx] *= scale;
+    }
+
+    // transform into z-plane through bilinear transform
+    for (uint8_t idx = 0; idx < _num_filters; ++idx) {
+        poles[idx] = ( 1.0F + poles[idx] / (2.0F*_sample_freq) ) / ( 1.0F - poles[idx] / (2.0F*_sample_freq) );
+    }
+
+    // calculate coefficients
+    for (uint8_t idx = 0; idx < _num_filters; ++idx) {
+        float a0, a1, a2, k;
+
+        a0 = 1.0F;
+        a1 = -2.0F*poles[idx].real();
+        a2 = std::pow(poles[idx].real(), 2) + std::pow(poles[idx].imag(), 2);
+
+        k = (a0 + a1 + a2) / 4.0F;
+
+        _params[idx].cutoff_freq = _cutoff_freq;    // value is incorrect for this kind of parametrization, but must be positive for DigitaBiquadFilter to work!
+        _params[idx].sample_freq = _sample_freq;    // value is incorrect for this kind of parametrization, but must be positive for DigitaBiquadFilter to work!
+        _params[idx].a1 = a1;
+        _params[idx].a2 = a2;
+        _params[idx].b0 = 1.0F*k;   // we could save some computation time here and in the biquad filter through directly using k, but this requires a change in DigitalBiquadFilter
+        _params[idx].b1 = 2.0F*k;
+        _params[idx].b2 = 1.0F*k;
+    }
+}
+
+
+template <class T>
+void LowPassFilterMp<T>::compute_butterworth_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]) {
+    
+    // calculate the poles of the analog filter
+    uint8_t filter_order = 2*_num_filters;
+    for (uint8_t k = 0; k < _num_filters; ++k) {
+        float theta = static_cast<float>(2 * k + 1) * M_PI / (2 * filter_order);
+        float real = -std::sin(theta) * 2*M_PI * _cutoff_freq;
+        float imag =  std::cos(theta) * 2*M_PI * _cutoff_freq;
+        poles[k] = std::complex<float>(real, imag);
+    }
+}
+
+
+template <class T>
+void LowPassFilterMp<T>::compute_pt2_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]) {
+
+    // calculate the poles of the analog filter
+    float pt2_cutoff_freq = _pt2_freq_scale * _cutoff_freq;
+
+    for (uint8_t idx = 0; idx < _num_filters; ++idx) {
+        poles[idx] = std::complex<float>(-pt2_cutoff_freq * 2*M_PI, 0.0F);
+    }    
+}
+
+
+template class LowPassFilterMp<Vector3f>;

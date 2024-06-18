@@ -356,6 +356,14 @@ const AP_Param::GroupInfo AP_InertialSensor::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("ML_GYR_NTCH", 55, AP_InertialSensor, _ml_gyro_notch_filter_conf,  0),
 
+    // @Param: ML_GYR_CASC
+    // @DisplayName: Number of cascaded biquad gyro filters for the MATLAB mode
+    // @Description: A higher number increases the filter order and attenuation at the cutoff frequency. This can be usefull to remove vibrations slightly above the cutoff frequency without reducing the cutoff frequency (and therefore introducing more delay at lower frequencies). More filter require more computational resources.
+    // @Values: 1:One filter (2nd order),2:Two filters (4th order),3:Three filters (6th order)
+    // @User: Advanced
+    // @RebootRequired: True
+    AP_GROUPINFO("ML_GYR_CASC", 56, AP_InertialSensor, _ml_gyro_filter_num_cascades, 1),
+
     // @Param: ACCEL_FILTER
     // @DisplayName: Accel filter cutoff frequency
     // @Description: Filter cutoff frequency for accelerometers. This can be set to a lower value to try to cope with very high vibration levels in aircraft. A value of zero means no filtering (not recommended!)
@@ -973,6 +981,11 @@ AP_InertialSensor::init(uint16_t loop_rate)
                 }
             }
         }
+    }
+
+    // allocate dynamic multipole lowpass
+    for (auto &ml_filter : _ml_gyro_filter) {
+        ml_filter.allocate_filters(_ml_gyro_filter_num_cascades.get());
     }
 
 #if HAL_INS_TEMPERATURE_CAL_ENABLE
