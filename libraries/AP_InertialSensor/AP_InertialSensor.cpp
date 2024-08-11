@@ -349,20 +349,28 @@ const AP_Param::GroupInfo AP_InertialSensor::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("ML_GYR_FLTER", 54, AP_InertialSensor, _ml_gyro_filter_cutoff,  DEFAULT_GYRO_FILTER),
 
-    // @Param: ML_GYR_NTCH
+    // @Param: ML_GYR_HNTCH
     // @DisplayName: Enable gyro notch filters for the MATLAB mode
     // @Description: A value of nonzero means that the ArduPilot gyro notch filter pipeline is also used for the MATLAB mode
     // @Values: 0:Disabled,1:Enabled
     // @User: Advanced
-    AP_GROUPINFO("ML_GYR_NTCH", 55, AP_InertialSensor, _ml_gyro_notch_filter_conf,  0),
+    AP_GROUPINFO("ML_GYR_HNTCH", 55, AP_InertialSensor, _ml_gyro_notch_filter_conf,  0),
 
-    // @Param: ML_GYR_CASC
-    // @DisplayName: Number of cascaded biquad gyro filters for the MATLAB mode
-    // @Description: A higher number increases the filter order and attenuation at the cutoff frequency. This can be usefull to remove vibrations slightly above the cutoff frequency without reducing the cutoff frequency (and therefore introducing more delay at lower frequencies). More filter require more computational resources.
-    // @Values: 1:One filter (2nd order),2:Two filters (4th order),3:Three filters (6th order)
+    // @Param: ML_GYR_ORDER
+    // @DisplayName: Order of the gyro filter for the MATLAB mode
+    // @Description: A higher filter order increases the attenuation slope behind the cutoff frequency. This can be usefull to better remove vibrations slightly above the cutoff frequency without reducing the cutoff frequency itself. A higher filter order increases the computational load
+    // @Values: 1:1st order,2:2nd order (default),3:3rd order,4:4th order,5:5th order,6:6th order
     // @User: Advanced
     // @RebootRequired: True
-    AP_GROUPINFO("ML_GYR_CASC", 56, AP_InertialSensor, _ml_gyro_filter_num_cascades, 1),
+    AP_GROUPINFO("ML_GYR_ORDER", 56, AP_InertialSensor, _ml_gyro_filter_order, 2),
+
+    // @Param: ML_GYR_FTYPE
+    // @DisplayName: Gyro low-pass filter type for the MATLAB mode
+    // @Description: 
+    // @Values: 1:Butterworth (default),2:PTn,3:Bessel
+    // @User: Advanced
+    // @RebootRequired: True
+    AP_GROUPINFO("ML_GYR_FTYPE", 57, AP_InertialSensor, _ml_gyro_filter_type, 1),
 
     // @Param: ACCEL_FILTER
     // @DisplayName: Accel filter cutoff frequency
@@ -985,7 +993,7 @@ AP_InertialSensor::init(uint16_t loop_rate)
 
     // allocate dynamic multipole lowpass
     for (auto &ml_filter : _ml_gyro_filter) {
-        ml_filter.allocate_filters(_ml_gyro_filter_num_cascades.get());
+        ml_filter.init(_ml_gyro_filter_order.get(), _ml_gyro_filter_type.get());
     }
 
 #if HAL_INS_TEMPERATURE_CAL_ENABLE

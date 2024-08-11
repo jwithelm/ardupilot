@@ -137,12 +137,6 @@ template class LowPassFilter2p<Vector3f>;
 ////////////////////////////////////////////////////////////////////////////////////////////
 // LowPassFilterMp
 ////////////////////////////////////////////////////////////////////////////////////////////
-
-// ToDo:
-// - Do we need an external num_filters argument? This is probably more an internal argument. We need to check, how parameters behave if arrays of a class are instantiated?
-//   - We could include num_filters as internal AP_Param variable, but then this class would depend on AP_Param, and if we have an array of filters, each filter instance would have its own parameter, and this isn't usefull, because often an array of filters has the same parametrization!
-
-
 template <class T>
 LowPassFilterMp<T>::LowPassFilterMp()
     : _filters {nullptr}
@@ -159,19 +153,33 @@ LowPassFilterMp<T>::LowPassFilterMp(float sample_freq, float cutoff_freq, uint8_
 */
 
 
+template <class T>
+void LowPassFilterMp<T>::init(uint8_t filter_order, uint8_t filter_type)
+{
+    if (filter_order < 1) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "LowPassFilterMp: Requested filter order must be at least one (desired: %u)", filter_order);
+        _filter_order = 1;
+    }
+    else if (filter_order > 2*LPF_MP_MAX_FILTERS) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "LowPassFilterMp: Requested filter order too high (desired: %u, max: %u), using the maximum instead", filter_order, static_cast<uint8_t>(2*LPF_MP_MAX_FILTERS));
+        _filter_order = 2*LPF_MP_MAX_FILTERS;
+    }
+    else {
+        _filter_order = filter_order;
+    }
+
+    allocate_filters((_filter_order + 1) / 2);
+
+    // ToDo: Check for valid range?
+    _filter_type = filter_type;
+}
+
+
 // allocate a collection of biquad filters
-// ToDo: This function does now more than that, it also calculates some initial parameters! -> Rename or split?
 template <class T>
 void LowPassFilterMp<T>::allocate_filters(uint8_t num_filters)
 {
-    if (num_filters > LPF_MP_MAX_FILTERS) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "LowPassFilterMp: Too many cascaded filters requested (%u), using the maximum of %u instead", num_filters, static_cast<u_int>(LPF_MP_MAX_FILTERS));
-        _num_filters = LPF_MP_MAX_FILTERS;
-    }
-    else {
-        _num_filters = num_filters;
-    }
-
+    _num_filters = num_filters;
     if (_num_filters > 0) {
         _filters = new DigitalBiquadFilter<T>[_num_filters];
         _params = new typename DigitalBiquadFilter<T>::biquad_params[_num_filters];
@@ -180,10 +188,6 @@ void LowPassFilterMp<T>::allocate_filters(uint8_t num_filters)
             _num_filters = 0;
         }
     }
-
-    // calculate the frequency scaling factor for the PT2
-    float gain = std::pow(0.5F, 1.0F/_num_filters);
-    _pt2_freq_scale = std::sqrt(gain/(1-gain));
 }
 
 
@@ -251,38 +255,49 @@ void LowPassFilter2p<T>::reset(const T &value) {
 */
 
 
-// This function calculates the poles for a butterworth filter of 2*_num_filters order.
-// The poles then get splitted into _num_filters biquad filters and the coefficients for the biquad filters are calculated.
+// Calculate the cascaded biquad filters coefficients
 template <class T>
 void LowPassFilterMp<T>::compute_params(void) {
     
     std::complex<float> poles[LPF_MP_MAX_FILTERS] {};
     
-    // ToDo: Switch / Case for filter type OR function pointer. One could be changed during runtime and the other would require an reboot.
-    //compute_pt2_analog(poles);
-    compute_butterworth_analog(poles);
+    // ToDo: Calculation of analog prototype could be done in the init function if filter type is a reboot parameter! -> Reduce computational load
+    switch (_filter_type) {
+        case 1:
+            compute_butterworth_analog(poles);
+            break;
+        case 2:
+            compute_ptn_analog(poles);
+            break;
+        case 3:
+            compute_bessel_analog(poles);
+            break;
+        default:
+            compute_butterworth_analog(poles);
+    }
 
-    // scale poles (continuous frequency pre-warp)
-    float scale = (_sample_freq/M_PI * std::tan(M_PI*_cutoff_freq/_sample_freq))/_cutoff_freq;  // ToDo: This is not good, because _cutoff_freq can be zero!
-    //float scale = 2 * _sample_freq * std::tan(M_PI*_cutoff_freq/_sample_freq);
+    // scale poles to cutoff frequency with frequency pre-warp for bilinear z-transform
+    float scale = 2.0F * _sample_freq * std::tan(M_PI*_cutoff_freq/_sample_freq);
     for (uint8_t idx = 0; idx < _num_filters; ++idx) {
         poles[idx] *= scale;
     }
 
-    // transform into z-plane through bilinear transform
+    // transform poles into z-plane through bilinear transform
     for (uint8_t idx = 0; idx < _num_filters; ++idx) {
         poles[idx] = ( 1.0F + poles[idx] / (2.0F*_sample_freq) ) / ( 1.0F - poles[idx] / (2.0F*_sample_freq) );
     }
 
     // calculate coefficients
-    for (uint8_t idx = 0; idx < _num_filters; ++idx) {
-        float a0, a1, a2, k;
+    
+    // second order element(s)
+    uint8_t idx_max = (_filter_order % 2) ? _num_filters - 1 : _num_filters;
+    for (uint8_t idx = 0; idx < idx_max; ++idx) {
+        float a1, a2, k;
 
-        a0 = 1.0F;
         a1 = -2.0F*poles[idx].real();
         a2 = std::pow(poles[idx].real(), 2) + std::pow(poles[idx].imag(), 2);
 
-        k = (a0 + a1 + a2) / 4.0F;
+        k = (1.0F + a1 + a2) / 4.0F;
 
         _params[idx].cutoff_freq = _cutoff_freq;    // value is incorrect for this kind of parametrization, but must be positive for DigitaBiquadFilter to work!
         _params[idx].sample_freq = _sample_freq;    // value is incorrect for this kind of parametrization, but must be positive for DigitaBiquadFilter to work!
@@ -292,33 +307,98 @@ void LowPassFilterMp<T>::compute_params(void) {
         _params[idx].b1 = 2.0F*k;
         _params[idx].b2 = 1.0F*k;
     }
+
+    // first order element (for odd filter orders)
+    if (_filter_order % 2) {
+        float a1, a2, k;
+
+        a1 = -1.0F*poles[_num_filters-1].real(); // This pole is already a real pole
+        a2 = 0.0F;
+
+        k = (1.0F + a1 + a2) / 2.0F;
+
+        _params[_num_filters-1].cutoff_freq = _cutoff_freq;    // value is incorrect for this kind of parametrization, but must be positive for DigitaBiquadFilter to work!
+        _params[_num_filters-1].sample_freq = _sample_freq;    // value is incorrect for this kind of parametrization, but must be positive for DigitaBiquadFilter to work!
+        _params[_num_filters-1].a1 = a1;
+        _params[_num_filters-1].a2 = a2;
+        _params[_num_filters-1].b0 = 1.0F*k;   // we could save some computation time here and in the biquad filter through directly using k, but this requires a change in DigitalBiquadFilter
+        _params[_num_filters-1].b1 = 1.0F*k;
+        _params[_num_filters-1].b2 = 0.0F;
+    }
 }
 
 
 template <class T>
 void LowPassFilterMp<T>::compute_butterworth_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]) {
     
-    // calculate the poles of the analog filter
-    uint8_t filter_order = 2*_num_filters;
+    // Calculate the reduced poles set of the analog filter prototype with cutoff at 1 rad/s
     for (uint8_t k = 0; k < _num_filters; ++k) {
-        float theta = static_cast<float>(2 * k + 1) * M_PI / (2 * filter_order);
-        float real = -std::sin(theta) * 2*M_PI * _cutoff_freq;
-        float imag =  std::cos(theta) * 2*M_PI * _cutoff_freq;
+        float theta = static_cast<float>(2 * k + 1) * M_PI / (2 * _filter_order);
+        float real = -std::sin(theta);
+        float imag =  std::cos(theta);
         poles[k] = std::complex<float>(real, imag);
     }
 }
 
 
 template <class T>
-void LowPassFilterMp<T>::compute_pt2_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]) {
+void LowPassFilterMp<T>::compute_ptn_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]) {
 
-    // calculate the poles of the analog filter
-    float pt2_cutoff_freq = _pt2_freq_scale * _cutoff_freq;
+    // Calculate the reduced poles set of the analog filter prototype with cutoff at 1 rad/s
+
+    // calculate the time constant
+    static constexpr float gain = 1.0/std::sqrt(2);          // -3.01 dB
+    float gain_per_pt1 = std::pow(gain, 1.0F/_filter_order); // gain per PT1 stage (gain must be splitted between _filter_order stages)
+    float time_constant = std::sqrt(1.0F/std::pow(gain_per_pt1, 2) - 1.0F);
+
+    auto pole = std::complex<float>(-1.0F/time_constant, 0.0F);
 
     for (uint8_t idx = 0; idx < _num_filters; ++idx) {
-        poles[idx] = std::complex<float>(-pt2_cutoff_freq * 2*M_PI, 0.0F);
+        poles[idx] = pole;
     }    
 }
 
 
+template <class T>
+void LowPassFilterMp<T>::compute_bessel_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]) {
+
+    // Calculate the reduced poles set of the analog filter prototype with cutoff at 1 rad/s
+
+    // Hardcoded lookup (we do not want to search for the roots of higher order polynomials at runtime)
+    //  Calculate with MATLAB or Python, or use precalculated values, e.g. http://www.crbond.com/papers/bsf2.pdf
+    switch (_filter_order) {
+        case 1:
+            poles[0] = std::complex<float>(-1.0F, 0.0F);
+            break;
+        case 2:
+            poles[0] = std::complex<float>(-1.1016013306F, 0.6360098248F);
+            break;
+        case 3:
+            poles[0] = std::complex<float>(-1.0474091610F, 0.9992644363F);
+            poles[1] = std::complex<float>(-1.3226757999F, 0.0F);
+            break;
+        case 4:
+            poles[0] = std::complex<float>(-0.9952087644F, 1.2571057395F);
+            poles[1] = std::complex<float>(-1.3700678306F, 0.4102497175F);
+            break;
+        case 5:
+            poles[0] = std::complex<float>(-0.9576765486F, 1.4711243207);
+            poles[1] = std::complex<float>(-1.3808773259F, 0.7179095876F);
+            poles[2] = std::complex<float>(-1.5023162714F, 0.0F);
+            break;
+        case 6:
+            poles[0] = std::complex<float>(-0.9306565229F, 1.6618632689F);
+            poles[1] = std::complex<float>(-1.3818580976F, 0.9714718907F);
+            poles[2] = std::complex<float>(-1.5714904036F, 0.3208963742F);
+            break;
+    }
+
+    #if (LPF_MP_MAX_FILTERS > 3)
+        #error When increasing LPF_MP_MAX_FILTERS, LowPassFilterMp::compute_bessel_analog() must be adapted!
+    #endif 
+
+}
+
+
+template class LowPassFilterMp<float>;
 template class LowPassFilterMp<Vector3f>;

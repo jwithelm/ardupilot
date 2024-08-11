@@ -102,16 +102,27 @@ typedef LowPassFilter2p<Vector3f> LowPassFilter2pVector3f;
 ////////////////////////////////////////////////////////////////////////////////////////////
 // ToDo:
 // - Check if GCS_SEND_TEXT has an text length limit!
+// - Init function could return the filter order, and the AP Param could be overwritten!
+// - Naming of Parameters: INS_ML_GYR_NTCH -> INS_ML_GYR_HNTCH, INS_ML_NTCH_ENAB
+// - Checks: Call of apply() in unitialized state; Call of apply with cutoff frequency to zero
+// - Make sure, that filters are applied in order that minimates the clipping risk (filters with gain > 1 last)
+// - One could precalculate analog prototype poles in the init function
 
 #include <complex>
 //#include <AP_Math/AP_Math.h> -> for M_PI (already included)
-//#include <cmath> -> for trigonometric functions (already)
+//#include <cmath> -> for trigonometric functions (already included)
 
 #define LPF_MP_MAX_FILTERS 3 // The cascade consists of biquads, so the maximum filter order will be 2*LPF_MP_MAX_FILTERS.
 
 template <class T>
 class LowPassFilterMp {
 public:
+    enum FilterType {
+        Butterworth = 1,
+        PTn,
+        Bessel
+    };
+
     // constructor
     LowPassFilterMp();
     //LowPassFilterMp(float sample_freq, float cutoff_freq);
@@ -119,7 +130,7 @@ public:
     ~LowPassFilterMp();
 
     // initialize filters
-    void allocate_filters(uint8_t num_filters);
+    void init(uint8_t filter_order, uint8_t filter_type);
     
     // change parameters
     void set_cutoff_frequency(float sample_freq, float cutoff_freq);
@@ -145,19 +156,23 @@ private:
 
     // number of allocated filters
     uint8_t _num_filters {};
+    uint8_t _filter_order {};
+    uint8_t _filter_type  {};
 
     // filter settings
     float _sample_freq {};
     float _cutoff_freq {};
 
-    // PT2 params
-    float _pt2_freq_scale {};
+    void allocate_filters(uint8_t num_filters);
 
     // calculates the biquad coefficients
     void compute_params(void);
 
+    // functions for analog filter prototypes
     void compute_butterworth_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]);
-    void compute_pt2_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]);
+    void compute_ptn_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]);
+    void compute_bessel_analog(std::complex<float> (&poles)[LPF_MP_MAX_FILTERS]);
 };
 
+typedef LowPassFilterMp<float>    LowPassFilterMpFloat;
 typedef LowPassFilterMp<Vector3f> LowPassFilterMpVector3f;

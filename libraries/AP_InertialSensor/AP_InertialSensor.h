@@ -605,7 +605,8 @@ private:
     AP_Int16    _ml_gyro_filter_cutoff;
     AP_Int8     _gyro_cal_timing;
 
-    AP_Int8     _ml_gyro_filter_num_cascades;
+    AP_Int8     _ml_gyro_filter_order;
+    AP_Int8     _ml_gyro_filter_type;
 
     AP_Int8     _ml_gyro_notch_filter_conf;
     bool        _ml_gyro_notch_filter_enabled;
